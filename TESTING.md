@@ -33,17 +33,26 @@ Substitute your own existing paths. The tool reads real inventory/configuration 
 
 `OUTPUT_JSON` must be a **fresh report path**, not the game's `data/mods.cfg`. The audit rejects normalized cfg collisions (including relative paths and case variants) and existing output files/directories before creating scratch files or writing output. Existing symlink/hardlink outputs are rejected too. Report creation uses create-new/no-overwrite semantics, so an output that appears after the initial check cannot be overwritten. To rerun, choose another report filename.
 
-Focused output-safety regression (synthetic fixtures only, using this checkout's SDK):
+Focused output-safety regression (synthetic fixtures only, with .NET 10 SDK on PATH):
 
 ```sh
-.tools/dotnet/dotnet.exe test tests/KenshiModManager.Core.Tests/KenshiModManager.Core.Tests.csproj -c Release --filter FullyQualifiedName~AuditOutputGuardTests
+dotnet test tests/KenshiModManager.Core.Tests/KenshiModManager.Core.Tests.csproj -c Release --filter FullyQualifiedName~AuditOutputGuardTests
 ```
+
+The optional project-local SDK installed by `scripts/install-sdk.py` can be used by substituting `.tools/dotnet/dotnet.exe` for `dotnet`. The symlink case requires Windows permission to create symbolic links (Developer Mode or an appropriately permitted session); inability to create a fixture symlink is a test-environment prerequisite failure, not proof that the safety case passed.
 
 This checks byte-preserving early rejection for direct/case/relative cfg paths, existing reports, and cfg symlink/hardlink aliases, plus successful fresh external report generation. These focused tests are not full release validation.
 
 ## Packaging verification
 
-`python scripts/package.py` publishes a separate V0.5 self-contained Windows x64 folder/ZIP, includes license notices, and records SHA-256 evidence under `.hermes`. Extract it into a new isolated location; launch the extracted executable against a synthetic fixture without relying on a machine .NET installation, verify state/cfg behavior and a clean exit, and verify version metadata before uploading.
+`python scripts/package.py` publishes a V0.5.1 self-contained Windows x64 folder/ZIP from fresh staging, includes notices selected from the packaged runtime versions, and records SHA-256 evidence under `.hermes`. Existing folders, ZIPs, checksums and manifests are never overwritten. Use a fresh `--label` for another build or a local development output:
+
+```sh
+python -m unittest discover -s tests/tooling -p test_package.py -v
+python scripts/package.py --label dev-finish
+```
+
+The label changes output names only, not the application's version. These Python packaging tests use real files and ZIP contents but mock the expensive publisher and HTTP boundary; they do not prove a real self-contained publication or notice download. Final verification must execute the real packaging command. Extract the ZIP into a new isolated location; launch the extracted executable against a synthetic fixture without relying on a machine .NET installation, verify state/cfg behavior and a clean exit, and verify version metadata before uploading.
 
 Private planning, captured real inventory, downloaded SDKs, build/test output, authentication helpers, and release receipts remain ignored. Public source is assembled from an explicit audited allowlist.
 

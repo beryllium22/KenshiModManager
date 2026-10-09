@@ -11,6 +11,7 @@ namespace KenshiModManager.App;
 public partial class MainWindow : Window {
  private readonly AppOptions options;
  private readonly StatePersistence persistence;
+ private readonly IDisposable writer;
  private readonly DispatcherTimer saveTimer=new() {Interval=TimeSpan.FromMilliseconds(400)};
  private WorkspaceViewModel? vm;
  private GameWriteService? game;
@@ -22,7 +23,9 @@ public partial class MainWindow : Window {
  private bool dragCandidate;
 
  public MainWindow(AppOptions options) {
-  this.options=options; persistence=new(options.DataDirectory); InitializeComponent();
+  this.options=options; persistence=new(options.DataDirectory); writer=persistence.AcquireWriter();
+  try { InitializeComponent(); } catch { writer.Dispose(); throw; }
+  Closed+=(_,_)=> {saveTimer.Stop(); writer.Dispose();};
   SourceInitialized+=(_,_)=>ApplyNativeDarkCaption();
   saveTimer.Tick+=async (_,_)=> {saveTimer.Stop(); await SaveAsync();};
   Loaded+=async (_,_)=>await InitializeAsync(); Closing+=WindowClosing;
@@ -98,7 +101,7 @@ public partial class MainWindow : Window {
   closing=false; if(choice==MessageBoxResult.Yes) {closeApproved=true; Close();}
  }
  private void RefreshView(string[]? preserve=null) {
-  if(vm is null || ModGrid is null) return; var selected=preserve ?? (lastEditorProfileId==vm.SelectedProfile?.Id?SelectedNames():[]); lastEditorProfileId=vm.SelectedProfile?.Id; refreshing=true;
+  if(vm is null || ModGrid is null) return; var selected=preserve ?? (lastEditorProfileId==vm.SelectedProfile?.Id?SelectedNames():[]); var focused=Keyboard.FocusedElement is CheckBox {DataContext:ModRow focusedRow} box && Ancestor<DataGrid>(box)==ModGrid?focusedRow.FileName:null; lastEditorProfileId=vm.SelectedProfile?.Id; refreshing=true;
   try {
    ModGrid.ItemsSource=vm.Filter(SearchBox.Text,FilterValue(SourceFilter),FilterValue(StatusFilter),FilterValue(EnabledFilter));
    var names=selected.ToHashSet(StringComparer.OrdinalIgnoreCase); foreach(var row in ModGrid.Items.OfType<ModRow>()) if(names.Contains(row.FileName)) ModGrid.SelectedItems.Add(row);
@@ -112,6 +115,10 @@ public partial class MainWindow : Window {
 
   } finally {refreshing=false;}
   UpdateDetails(); UpdateWriteButtons();
+  if(focused is not null) {
+   ModGrid.UpdateLayout(); var item=ModGrid.Items.OfType<ModRow>().FirstOrDefault(r=>string.Equals(r.FileName,focused,StringComparison.OrdinalIgnoreCase));
+   if(item is not null && ModGrid.Columns[0].GetCellContent(item) is ContentPresenter content && VisualTreeHelper.GetChildrenCount(content)>0 && VisualTreeHelper.GetChild(content,0) is CheckBox checkbox) checkbox.Focus();
+  }
  }
  private static string FilterValue(ComboBox box)=>(box.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "All";
  private bool Filtered => !string.IsNullOrWhiteSpace(SearchBox.Text) || FilterValue(SourceFilter)!="All" || FilterValue(StatusFilter)!="All" || FilterValue(EnabledFilter)!="All";

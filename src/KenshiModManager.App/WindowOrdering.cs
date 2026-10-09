@@ -5,7 +5,12 @@ using System.Windows.Media;
 namespace KenshiModManager.App;
 public partial class MainWindow {
  private sealed record ModDrag(MainWindow Owner,string ProfileId,string[] Names);
- private void ToggleClick(object sender,RoutedEventArgs e)=>Run(()=> {if(sender is CheckBox {DataContext:ModRow row} box) {var selected=SelectedNames(); vm!.SetEnabled([row.FileName],box.IsChecked==true); RefreshView(selected);} e.Handled=true;});
+ private void ToggleClick(object sender,RoutedEventArgs e) {
+  // Binding projection also raises Checked/Unchecked; only genuine state changes edit history.
+  if(sender is CheckBox {DataContext:ModRow row} box && row.Enabled!=(box.IsChecked==true))
+   Run(()=>vm!.SetEnabled([row.FileName],box.IsChecked==true));
+  e.Handled=true;
+ }
  private void EnableClick(object sender,RoutedEventArgs e)=>Run(()=>vm!.SetEnabled(SelectedNames(),true));
  private void DisableClick(object sender,RoutedEventArgs e)=>Run(()=>vm!.SetEnabled(SelectedNames(),false));
  private void MoveSelected(int destination) {var names=SelectedNames(); if(names.Length==0) return; vm!.Move(names,destination); RefreshView(names); if(ModGrid.SelectedItem is not null) ModGrid.ScrollIntoView(ModGrid.SelectedItem);}
@@ -32,7 +37,7 @@ public partial class MainWindow {
   if(control && key==Key.Z) {Run(()=>vm.Undo()); e.Handled=true;}
   else if(control && key==Key.Y) {Run(()=>vm.Redo()); e.Handled=true;}
   else if(ModGrid.IsKeyboardFocusWithin && alt && key is Key.Up or Key.Down) {Run(()=>StepSelection(key==Key.Down)); e.Handled=true;}
-  else if(ModGrid.IsKeyboardFocusWithin && key==Key.Space) {Run(()=> {var selected=ModGrid.SelectedItems.OfType<ModRow>().ToArray(); if(selected.Length>0) vm.SetEnabled(selected.Select(r=>r.FileName),!selected.All(r=>r.Enabled));}); e.Handled=true;}
+  else if(ModGrid.IsKeyboardFocusWithin && key==Key.Space && Ancestor<CheckBox>(e.OriginalSource as DependencyObject) is null) {Run(()=> {var selected=ModGrid.SelectedItems.OfType<ModRow>().ToArray(); if(selected.Length>0) vm.SetEnabled(selected.Select(r=>r.FileName),!selected.All(r=>r.Enabled));}); e.Handled=true;}
  }
  private static T? Ancestor<T>(DependencyObject? item) where T:DependencyObject {
   while(item is not null) {if(item is T match) return match; item=item is Visual || item is System.Windows.Media.Media3D.Visual3D?VisualTreeHelper.GetParent(item):LogicalTreeHelper.GetParent(item);} return null;

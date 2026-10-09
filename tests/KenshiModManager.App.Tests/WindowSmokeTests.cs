@@ -18,6 +18,7 @@ public class WindowSmokeTests {
     var workshop=Path.Combine(root,"workshop"); Directory.CreateDirectory(workshop); new ProfileStore(Path.Combine(data,"state.json")).Save(new ManagerState {WorkshopPaths=[workshop]});
     var cfg=Path.Combine(game,"data","mods.cfg"); File.WriteAllText(cfg,"123. Real.mod\r\nmissing.mod\r\n"); File.WriteAllText(Path.Combine(game,"mods","test","123. Real.mod"),""); var original=File.ReadAllBytes(cfg);
     if(Application.Current is null) {var app=new Application {Resources=new ResourceDictionary {Source=new Uri("pack://application:,,,/KenshiModManager.App;component/Theme.xaml")},ShutdownMode=ShutdownMode.OnExplicitShutdown};}
+    AssertWriterOwnership();
     window=new MainWindow(new(game,data,true)) {ShowInTaskbar=false}; window.Show();
     PumpUntil(()=>window.DataContext is WorkspaceViewModel && ((TextBlock)window.FindName("SaveLabel")).Text.StartsWith("Manager state saved"),TimeSpan.FromSeconds(15));
     var vm=Assert.IsType<WorkspaceViewModel>(window.DataContext);
@@ -47,8 +48,65 @@ public class WindowSmokeTests {
     Click(window,"Disable"); Assert.False(vm.SelectedProfile.Mods[0].Enabled); Click(window,"Undo"); Assert.True(vm.SelectedProfile.Mods[0].Enabled); Click(window,"Redo"); Assert.False(vm.SelectedProfile.Mods[0].Enabled);
     PumpUntil(()=>((TextBlock)window.FindName("SaveLabel")).Text.StartsWith("Manager state saved"),TimeSpan.FromSeconds(10));
     var saved=new ProfileStore(Path.Combine(data,"state.json")).Load(); Assert.Equal("Smoke profile",saved.Profiles.First(p=>p.Id==saved.SelectedProfileId).Name); Assert.Null(saved.AppliedProfileId); Assert.Equal(original,File.ReadAllBytes(cfg));
+    // Real accessibility TogglePattern must update the profile, not only the checkbox.
+    void AutomationToggle() {
+     window.UpdateLayout();
+     var box=Descendants<CheckBox>(grid).First(b=>b.DataContext is ModRow r && r.FileName=="123. Real.mod");
+     var peer=System.Windows.Automation.Peers.UIElementAutomationPeer.CreatePeerForElement(box)!;
+     Assert.Equal("Enable 123. Real.mod",peer.GetName());
+     Assert.Equal(System.Windows.Automation.Peers.AutomationControlType.CheckBox,peer.GetAutomationControlType());
+     Assert.True(peer.IsKeyboardFocusable());
+     var toggle=Assert.IsAssignableFrom<System.Windows.Automation.Provider.IToggleProvider>(peer.GetPattern(System.Windows.Automation.Peers.PatternInterface.Toggle));
+     toggle.Toggle();
+    }
+    AutomationToggle(); Assert.True(vm.SelectedProfile.Mods[0].Enabled,"UIA TogglePattern changed only the visual checkbox, not the profile.");
+    AutomationToggle(); Assert.False(vm.SelectedProfile.Mods[0].Enabled);
+    Click(window,"Undo"); Assert.True(vm.SelectedProfile.Mods[0].Enabled);
+    Assert.True(vm.CanRedo);
+    ((TextBox)window.FindName("SearchBox")).Text="no matching filename"; window.UpdateLayout();
+    ((TextBox)window.FindName("SearchBox")).Clear(); window.UpdateLayout();
+    Assert.True(vm.CanRedo,"Checkbox recreation while filtering must not append a projection-only edit.");
+    Click(window,"Redo"); Assert.False(vm.SelectedProfile.Mods[0].Enabled);
+    // Focused checkbox Space belongs to that native control even with no selected rows.
+    window.UpdateLayout(); grid.UnselectAll();
+    var focusedBox=Descendants<CheckBox>(grid).First(b=>b.DataContext is ModRow r && r.FileName=="123. Real.mod");
+    Assert.True(focusedBox.Focus());
+    var spacePreview=new System.Windows.Input.KeyEventArgs(System.Windows.Input.Keyboard.PrimaryDevice,PresentationSource.FromVisual(window),0,System.Windows.Input.Key.Space) {RoutedEvent=System.Windows.Input.Keyboard.PreviewKeyDownEvent};
+    focusedBox.RaiseEvent(spacePreview);
+    Assert.False(spacePreview.Handled,"Window grid shortcut swallowed Space from a focused checkbox with no row selection.");
+    AutomationToggle(); window.UpdateLayout();
+    var refreshedBox=Descendants<CheckBox>(grid).First(b=>b.DataContext is ModRow r && r.FileName=="123. Real.mod");
+    Assert.True(refreshedBox.IsKeyboardFocused,"Toggling a focused checkbox must retain native keyboard focus on the same mod after refresh.");
+    AutomationToggle(); window.UpdateLayout(); Assert.False(vm.SelectedProfile.Mods[0].Enabled);
+    Assert.True(Descendants<CheckBox>(grid).First(b=>b.DataContext is ModRow r && r.FileName=="123. Real.mod").IsKeyboardFocused);
+    // Exercise the real autosave error surface, then retry without discarding edits.
+    var savedBytes=File.ReadAllBytes(Path.Combine(data,"state.json"));
+    using(var locked=new FileStream(Path.Combine(data,"state.json"),FileMode.Open,FileAccess.Read,FileShare.None)) {
+     vm.SetEnabled(["123. Real.mod"],true);
+     PumpUntil(()=>((TextBlock)window.FindName("SaveLabel")).Text.StartsWith("AUTOSAVE FAILED"),TimeSpan.FromSeconds(10));
+     Assert.True(vm.SelectedProfile!.Mods[0].Enabled);
+     Assert.Contains("Cannot save manager state",((TextBlock)window.FindName("Notice")).Text);
+     Assert.Equal(original,File.ReadAllBytes(cfg));
+    }
+    Assert.Equal(savedBytes,File.ReadAllBytes(Path.Combine(data,"state.json")));
+    // The next edit retries persistence after the transient lock is removed.
+    vm.Rename("Recovered profile");
+    PumpUntil(()=>((TextBlock)window.FindName("SaveLabel")).Text.StartsWith("Manager state saved"),TimeSpan.FromSeconds(10));
+    var recovered=new ProfileStore(Path.Combine(data,"state.json")).Load();
+    Assert.Equal("Recovered profile",recovered.Profiles.First(p=>p.Id==recovered.SelectedProfileId).Name);
+    Assert.True(recovered.Profiles.First(p=>p.Id==recovered.SelectedProfileId).Mods[0].Enabled);
+    Assert.Null(recovered.AppliedProfileId); Assert.Equal(original,File.ReadAllBytes(cfg));
    } catch(Exception error) {failure=error;} finally {window?.Close();}
   }) {IsBackground=true}; thread.SetApartmentState(ApartmentState.STA); thread.Start(); Assert.True(thread.Join(TimeSpan.FromSeconds(35)),"WPF smoke test timed out"); if(failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+ }
+ private static void AssertWriterOwnership() {
+  var windows=new List<MainWindow>(); var data=Path.Combine(ProjectFixture(),"manager");
+  MainWindow Open(string path) {var window=new MainWindow(new(null,path,true)) {ShowActivated=false,ShowInTaskbar=false}; windows.Add(window); return window;}
+  try {
+   var owner=Open(data); Assert.Throws<IOException>(()=>Open(Path.Combine(data,".")));
+   Open(Path.Combine(ProjectFixture(),"manager")).Close();
+   owner.Close(); Open(data).Close();
+  } finally {foreach(var window in windows) window.Close();}
  }
  private static IEnumerable<T> Descendants<T>(DependencyObject root) where T:DependencyObject {
   for(var i=0;i<VisualTreeHelper.GetChildrenCount(root);i++) {var child=VisualTreeHelper.GetChild(root,i); if(child is T value) yield return value; foreach(var nested in Descendants<T>(child)) yield return nested;}
@@ -57,7 +115,15 @@ public class WindowSmokeTests {
  private static void InvokeAdd(Window owner,string name,string accept) {
   Exception? error=null; var timer=new DispatcherTimer {Interval=TimeSpan.FromMilliseconds(25)};
   timer.Tick+=(_,_)=> {var dialog=Application.Current.Windows.OfType<Window>().FirstOrDefault(w=>w.Owner==owner); if(dialog is null) return; timer.Stop();
-   try {Descendants<TextBox>(dialog).First().Text="Real"; var grid=Descendants<DataGrid>(dialog).Single(); grid.SelectedItem=grid.Items.Cast<object>().First(); Click(dialog,accept);}
+   try {
+    var search=Descendants<TextBox>(dialog).First();
+    Assert.Equal("Search installed filenames, titles or sources",System.Windows.Automation.AutomationProperties.GetName(search));
+    search.Text="Real"; var grid=Descendants<DataGrid>(dialog).Single(); dialog.UpdateLayout();
+    Assert.Equal(new[]{"TITLE","EXACT FILENAME","SOURCE","STATE"},grid.Columns.Select(c=>c.Header?.ToString()));
+    Assert.All(grid.Columns,c=>Assert.True(c.ActualWidth>0));
+    Assert.Equal("Installed mods available to add",System.Windows.Automation.AutomationProperties.GetName(grid));
+    grid.SelectedItem=grid.Items.Cast<object>().First(); Click(dialog,accept);
+   }
    catch(Exception problem) {error=problem; dialog.Close();}
   }; timer.Start(); Click(owner,"Add installed mods"); timer.Stop(); if(error is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
  }

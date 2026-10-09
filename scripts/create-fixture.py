@@ -14,7 +14,7 @@ for index, name in enumerate(names):
     folder.mkdir(parents=True, exist_ok=True)
     (folder / name).write_bytes(b'')  # Synthetic metadata-only fixture, not a playable mod.
     workshop_id = '' if index == 4 else str(9000000000 + index)
-    (folder / (Path(name).stem + '.info')).write_text('<Data><mod>' + escape(name) + '</mod><title>' + escape(Path(name).stem) + '</title><publishedfileid>' + workshop_id + '</publishedfileid><tags>Test fixture</tags></Data>', encoding='utf-8')
+    (folder / (Path(name).stem + '.info')).write_text('<ModData><mod>' + escape(name) + '</mod><title>' + escape(Path(name).stem) + '</title><WorkshopID>' + workshop_id + '</WorkshopID><tags><string>Test fixture</string></tags></ModData>', encoding='utf-8')
 (game / 'data').mkdir(parents=True, exist_ok=True)
 cfg = game / 'data' / 'mods.cfg'
 if not cfg.exists():

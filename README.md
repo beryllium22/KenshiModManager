@@ -1,10 +1,10 @@
-# Kenshi Mod Manager — V0.5
+# Kenshi Mod Manager — V0.5.1
 
 A native Windows **Profile Studio** for Kenshi: a focused profile editor, searchable installed-mod picker, and deliberately separate game-write controls. Steam continues to own Workshop subscriptions and downloads.
 
 ## Download
 
-Download **KenshiModManager-V0.5-win-x64.zip** from [Releases](https://github.com/beryllium22/KenshiModManager/releases/tag/V0.5). Extract the **entire folder**, then run `KenshiModManager.App.exe`. The Windows x64 package includes .NET; a separate .NET installation is not required.
+Download **KenshiModManager-V0.5.1-win-x64.zip** from [Releases](https://github.com/beryllium22/KenshiModManager/releases/tag/V0.5.1). Extract the **entire folder**, then run `KenshiModManager.App.exe`. The Windows x64 package includes .NET; a separate .NET installation is not required.
 
 This is an early, unsigned release—not a signed installer. Windows may warn about unsigned software. Administrator privileges and Steam credentials are not required by the manager; your directory permissions still control whether the game configuration can be written.
 
@@ -51,17 +51,20 @@ Use `python scripts/create-fixture.py` to generate synthetic, non-playable fixtu
 
 ## Build and test
 
-Requirements: Windows x64, .NET 10 SDK, and Python 3 for optional setup/package scripts. Install .NET through Microsoft, or use `python scripts/install-sdk.py` for a SHA-512-verified project-local SDK. With `dotnet` on PATH:
+Requirements: Windows x64, .NET 10 SDK, and Python 3 for the full test suite, fixture generation, and setup/package scripts. Install .NET through Microsoft, or use `python scripts/install-sdk.py` for a SHA-512-verified project-local SDK. With `dotnet` on PATH:
 
 ```sh
 dotnet build src/KenshiModManager.App/KenshiModManager.App.csproj -c Release
 dotnet test tests/KenshiModManager.Core.Tests/KenshiModManager.Core.Tests.csproj -c Release
 dotnet test tests/KenshiModManager.Apply.Tests/KenshiModManager.Apply.Tests.csproj -c Release
 dotnet test tests/KenshiModManager.App.Tests/KenshiModManager.App.Tests.csproj -c Release
+python -m unittest discover -s tests/tooling -p test_package.py -v
 python scripts/package.py
 ```
 
-See [TESTING.md](TESTING.md) for verification boundaries and [CHANGELOG.md](CHANGELOG.md) for V0.5 changes. Build output, local manager state, installed inventory, internal planning, credentials, and SDK caches are not source-controlled.
+Packaging starts from fresh staging and refuses to overwrite existing outputs. For another build or a separate local development package, use a fresh label such as `python scripts/package.py --label dev-finish`. Labels change output names only; the application's version remains V0.5.1. Bundled runtime notices are selected from the framework versions in the published self-contained runtime configuration.
+
+See [TESTING.md](TESTING.md) for verification boundaries and [CHANGELOG.md](CHANGELOG.md) for V0.5.1 changes. Build output, local manager state, installed inventory, internal planning, credentials, and SDK caches are not source-controlled.
 
 ## License
 

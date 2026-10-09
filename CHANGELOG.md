@@ -1,5 +1,16 @@
 # Changelog
 
+## V0.5.1
+
+Patch release; profile schema and game-write behavior are unchanged.
+
+- Fixed enabled checkboxes so UI Automation toggles update the actual profile and undo history, not only the visual checkmark.
+- Kept native Space handling for focused checkboxes; the profile-wide shortcut no longer swallows it, and toggles retain keyboard focus when the grid refreshes.
+- Prevented competing app instances from autosaving into the same manager data folder: one window holds the writer lease until it closes; independent data folders remain available. Read-only game mode still autosaves manager profiles.
+- Hardened packaging with fresh staging, explicit output labels, no overwrite, and license notices matched to each bundled framework's actual version.
+- Corrected synthetic mod metadata to the scanner's actual XML format and added generator/scanner regressions.
+- Added native autosave failure/retry coverage without discarding profile edits or writing game configuration.
+
 ## V0.5
 
 Initial public Profile Studio release.
